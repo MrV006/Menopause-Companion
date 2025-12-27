@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, ClipboardList, Users, BookOpen, UserCircle, Menu, RefreshCw, 
   LogIn, Save, User as UserIcon, X, LogOut, ChevronLeft, Shield, 
-  Smartphone, Mail, Lock, Eye, EyeOff, CheckCircle, AlertTriangle, Bell, Info, Wrench, AlertOctagon, HeartHandshake, Loader2, Github, Phone
+  Smartphone, Mail, Lock, Eye, EyeOff, CheckCircle, AlertTriangle, Bell, Info, Wrench, AlertOctagon, HeartHandshake, Loader2, Github, Phone, Play, Pause, Download, Zap, Check
 } from 'lucide-react';
 import { Tab, UserProfile, AppNotification } from './types';
-import { MOCK_USER, COMMON_SYMPTOMS } from './constants';
-import { fetchUserProfile, saveUserProfile, checkForAppUpdates, subscribeToNotifications, subscribeToSystemStatus } from './api';
+import { MOCK_USER, COMMON_SYMPTOMS, GENERAL_WELLNESS_TIPS } from './constants';
+import { fetchUserProfile, saveUserProfile, checkForAppUpdates, subscribeToNotifications, subscribeToSystemStatus, hasLoggedToday } from './api';
 import Dashboard from './components/Dashboard';
 import SymptomTracker from './components/SymptomTracker';
 import Community from './components/Community';
@@ -22,7 +23,271 @@ import {
 } from './firebase';
 
 // Current App Version
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.3.2";
+
+// --- Extracted Components to prevent re-renders ---
+
+// 1. Profile Component
+const Profile = ({ 
+    user, 
+    userId, 
+    isAdminOrDev, 
+    isEditingProfile, 
+    setIsEditingProfile, 
+    onSave, 
+    setActiveTab 
+}: any) => {
+    // Local state for form to avoid parent re-renders on keystrokes
+    const [localForm, setLocalForm] = useState<UserProfile>(user);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setLocalForm(user);
+    }, [user]);
+
+    const handleSave = async () => {
+        setLoading(true);
+        await onSave(localForm);
+        setLoading(false);
+    };
+
+    return (
+    <div className="pb-24 px-4 py-6 w-full max-w-2xl mx-auto animate-fade-in">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-pink-100 text-center mb-6 relative">
+         <div className="absolute top-4 left-4 text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border dir-ltr" dir="ltr">
+            ID: {userId?.substring(0,6)}...
+         </div>
+         
+         {!isEditingProfile ? (
+            <div className="flex flex-col items-center">
+              <div className="w-24 h-24 bg-pink-100 rounded-full mb-4 flex items-center justify-center text-primary text-4xl font-bold overflow-hidden border-4 border-white shadow-md">
+                 {/* Only First Letter Logic */}
+                 {user.name ? (
+                    <span className="text-5xl">{user.name.charAt(0)}</span>
+                 ) : (
+                    <span>?</span>
+                 )}
+              </div>
+              
+              <h2 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                  {user.name || "کاربر جدید"}
+                  {isAdminOrDev && <Shield size={18} className="text-blue-500" />}
+              </h2>
+              
+              <div className="flex flex-col items-center gap-1 mb-4">
+                  <span className="text-gray-500 text-sm">{user.age ? `${user.age} ساله` : "سن نامشخص"}</span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${user.role === 'developer' ? 'bg-purple-100 text-purple-700' : user.role === 'super_admin' ? 'bg-red-100 text-red-700' : user.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {user.role === 'user' ? 'کاربر عادی' : user.role === 'subscriber' ? 'اشتراک ویژه' : user.role === 'admin' ? 'ادمین' : user.role === 'developer' ? 'برنامه‌نویس' : 'مدیر کل'}
+                  </span>
+              </div>
+
+               {/* Dominant Symptoms Display */}
+               <div className="w-full border-t border-gray-100 pt-3 mb-4">
+                  <span className="text-xs font-bold text-gray-500 block mb-2">علائم غالب من</span>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                      {user.dominantSymptoms?.length > 0 ? user.dominantSymptoms.map((s: string) => (
+                          <span key={s} className="px-3 py-1 bg-pink-50 text-pink-700 text-xs rounded-full border border-pink-100">{s}</span>
+                      )) : <span className="text-gray-400 text-sm">موردی ثبت نشده</span>}
+                  </div>
+               </div>
+              
+              <div className="flex gap-2 mt-2 justify-center">
+                <button 
+                  onClick={() => setIsEditingProfile(true)}
+                  className="text-primary text-sm font-bold border border-primary px-6 py-2 rounded-full hover:bg-pink-50 transition-colors"
+                >
+                  ویرایش پروفایل
+                </button>
+                {isAdminOrDev && (
+                    <button 
+                        onClick={() => setActiveTab(Tab.ADMIN)}
+                        className="bg-primary text-white text-sm font-bold px-6 py-2 rounded-full hover:bg-pink-700 transition-colors flex items-center gap-1"
+                    >
+                        <Shield size={14} /> مدیریت
+                    </button>
+                )}
+              </div>
+            </div>
+         ) : (
+            <div className="space-y-4 text-right max-w-md mx-auto">
+               <div className="bg-blue-50 text-blue-800 p-3 rounded-xl text-xs mb-4 flex items-center gap-2">
+                   <Info size={16} className="flex-shrink-0" />
+                   لطفا اطلاعات خود را کامل کنید تا تجربه بهتری داشته باشید.
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">نام نمایشی</label>
+                  <input 
+                    type="text" 
+                    value={localForm.name} 
+                    onChange={e => setLocalForm({...localForm, name: e.target.value})}
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
+                  />
+               </div>
+               <div className="flex gap-3">
+                   <div className="flex-1">
+                      <label className="block text-xs font-bold text-gray-700 mb-1">سن</label>
+                      <input 
+                        type="number" 
+                        value={localForm.age} 
+                        onChange={e => setLocalForm({...localForm, age: Number(e.target.value)})}
+                        className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
+                      />
+                   </div>
+                   <div className="flex-1">
+                      <label className="block text-xs font-bold text-gray-700 mb-1">وزن (کیلوگرم)</label>
+                      <input 
+                        type="number" 
+                        value={localForm.weight} 
+                        onChange={e => setLocalForm({...localForm, weight: Number(e.target.value)})}
+                        className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
+                      />
+                   </div>
+               </div>
+               <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">وضعیت پریود</label>
+                  <select 
+                     value={localForm.periodStatus}
+                     onChange={e => setLocalForm({...localForm, periodStatus: e.target.value as any})}
+                     className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
+                  >
+                     <option value="منظم">منظم</option>
+                     <option value="نامنظم">نامنظم</option>
+                     <option value="قطع شده (یائسه)">قطع شده (یائسه)</option>
+                  </select>
+               </div>
+
+               {/* Dominant Symptoms Selection */}
+               <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-2">علائم غالب (انتخاب کنید)</label>
+                    <div className="flex flex-wrap gap-2">
+                        {COMMON_SYMPTOMS.map((s: string) => {
+                            const isSelected = localForm.dominantSymptoms?.includes(s);
+                            return (
+                                <button
+                                    key={s}
+                                    onClick={() => {
+                                        const current = localForm.dominantSymptoms || [];
+                                        if (current.includes(s)) {
+                                            setLocalForm({...localForm, dominantSymptoms: current.filter((i:string) => i !== s)});
+                                        } else {
+                                            setLocalForm({...localForm, dominantSymptoms: [...current, s]});
+                                        }
+                                    }}
+                                    className={`px-3 py-1.5 rounded-full text-xs border transition-all flex items-center gap-1.5 ${
+                                        isSelected 
+                                        ? 'bg-primary text-white border-primary shadow-md ring-1 ring-pink-300' 
+                                        : 'bg-white text-gray-500 border-gray-200 hover:border-primary/50 hover:text-primary hover:bg-pink-50'
+                                    }`}
+                                >
+                                    {isSelected && <Check size={12} className="text-white" />}
+                                    {s}
+                                </button>
+                            );
+                        })}
+                    </div>
+               </div>
+               
+               <div className="flex gap-2 pt-4">
+                 <button 
+                   onClick={handleSave}
+                   disabled={loading}
+                   className="flex-1 bg-primary text-white py-3 rounded-xl font-bold text-sm flex justify-center items-center gap-2 shadow-lg shadow-pink-200 hover:bg-pink-700 transition-colors active:scale-95"
+                 >
+                   {loading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
+                   ذخیره
+                 </button>
+                 {user.name && user.name !== "کاربر جدید" && (
+                    <button 
+                    onClick={() => setIsEditingProfile(false)}
+                    className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors border border-gray-300"
+                    >
+                    انصراف
+                    </button>
+                 )}
+               </div>
+            </div>
+         )}
+      </div>
+    </div>
+    );
+};
+
+// 2. Global Audio Player Component
+const GlobalAudioPlayer = ({ currentAudio, onClose, isPlaying, onTogglePlay }: { currentAudio: any, onClose: () => void, isPlaying: boolean, onTogglePlay: () => void }) => {
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const [playbackRate, setPlaybackRate] = useState(1);
+
+    useEffect(() => {
+        if (audioRef.current) {
+            if (isPlaying) {
+                audioRef.current.play().catch(e => console.error("Play fail", e));
+            } else {
+                audioRef.current.pause();
+            }
+        }
+    }, [isPlaying, currentAudio]);
+
+    const changeSpeed = () => {
+        const newRate = playbackRate === 1 ? 1.5 : playbackRate === 1.5 ? 2 : playbackRate === 2 ? 0.5 : 1;
+        if (audioRef.current) {
+            audioRef.current.playbackRate = newRate;
+            setPlaybackRate(newRate);
+        }
+    };
+
+    return (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] w-auto max-w-sm">
+            <div className="bg-gray-900/90 backdrop-blur-md text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 border border-white/20">
+                <button onClick={onTogglePlay} className="p-1 hover:text-pink-400 transition-colors">
+                    {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                </button>
+                
+                <div className="flex flex-col min-w-[120px] max-w-[200px]">
+                    <span className="text-xs font-bold truncate">{currentAudio.title}</span>
+                    <span className="text-[10px] text-gray-400 truncate">{currentAudio.author}</span>
+                </div>
+
+                <button onClick={changeSpeed} className="text-xs font-mono font-bold w-8 hover:text-pink-400">
+                    {playbackRate}x
+                </button>
+
+                <a href={currentAudio.url} download target="_blank" rel="noreferrer" className="hover:text-pink-400">
+                    <Download size={18} />
+                </a>
+
+                <button onClick={onClose} className="text-gray-500 hover:text-white border-r border-gray-700 pr-2 mr-1">
+                    <X size={16} />
+                </button>
+
+                <audio 
+                    ref={audioRef} 
+                    src={currentAudio.url} 
+                    onEnded={() => onTogglePlay()} // Call pause when ended
+                    className="hidden" 
+                />
+            </div>
+        </div>
+    );
+};
+
+// 3. Update Banner Component
+const UpdateBanner = ({ version, onUpdate }: { version: string, onUpdate: () => void }) => (
+    <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-3 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3 animate-slide-down sticky top-0 z-[70]">
+        <div className="flex items-center gap-2">
+            <Zap size={20} className="text-yellow-300 animate-pulse" />
+            <div className="text-sm font-bold">نسخه جدید در دسترس است ({version})</div>
+        </div>
+        <button 
+            onClick={onUpdate}
+            className="bg-white text-purple-700 px-4 py-1.5 rounded-full text-xs font-bold hover:bg-gray-100 transition-colors shadow-sm flex items-center gap-2"
+        >
+            <RefreshCw size={14} />
+            بروزرسانی و پاکسازی
+        </button>
+    </div>
+);
+
+// --- Main App Component ---
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
@@ -35,6 +300,7 @@ const App: React.FC = () => {
   // System State
   const [isGlobalMaintenance, setIsGlobalMaintenance] = useState(false);
   const [isSystemLoading, setIsSystemLoading] = useState(true); // Prevent flashing
+  const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
 
   // --- Auth State ---
   const [authMethod, setAuthMethod] = useState<'phone' | 'email'>('phone'); // Tab switcher
@@ -48,12 +314,15 @@ const App: React.FC = () => {
 
   // Edit Profile State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editForm, setEditForm] = useState<UserProfile>(MOCK_USER);
 
   // Notifications State
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Audio Player State
+  const [currentAudio, setCurrentAudio] = useState<{url: string, title: string, author: string} | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   useEffect(() => {
     // Maintenance Listener
@@ -72,8 +341,12 @@ const App: React.FC = () => {
         
         // Subscribe to notifications
         const notifUnsub = subscribeToNotifications(currentUser.uid, (notifs) => {
-            setNotifications(notifs);
-            // Simple unread logic: check local storage for last read time
+            setNotifications(prev => {
+                // Merge local generated notifications with server ones if needed, 
+                // but here we just replace for simplicity, the daily logic adds to local state below
+                return notifs;
+            });
+            // Update badge
             const lastRead = localStorage.getItem('last_read_notif_time');
             if (lastRead) {
                 const count = notifs.filter(n => new Date(n.date).getTime() > parseInt(lastRead)).length;
@@ -82,6 +355,9 @@ const App: React.FC = () => {
                 setUnreadCount(notifs.length);
             }
         });
+        
+        // Check Daily Status on Load
+        checkDailyStatus(currentUser.uid);
         
         return () => notifUnsub();
 
@@ -92,26 +368,13 @@ const App: React.FC = () => {
       }
     });
 
-    // Auto Update Checker (Every 5 seconds)
+    // Auto Update Checker (Every 30 seconds for smoother check)
     const updateInterval = setInterval(async () => {
         const newVersion = await checkForAppUpdates(APP_VERSION);
         if (newVersion) {
-             // Ask user permission to update to avoid interrupting data entry
-             if (window.confirm(`نسخه جدید (${newVersion}) منتشر شده است.\nآیا می‌خواهید اکنون بروزرسانی کنید؟`)) {
-                
-                // 1. Clear Browser Cache
-                if ('caches' in window) {
-                   try {
-                     const keys = await caches.keys();
-                     await Promise.all(keys.map(key => caches.delete(key)));
-                   } catch (e) { console.error("Cache clear failed", e); }
-                }
-                
-                // 2. Force Reload from Server
-                window.location.reload();
-             }
+             setAvailableUpdate(newVersion);
         }
-    }, 5000);
+    }, 30000);
 
     return () => {
         unsubscribe();
@@ -136,9 +399,66 @@ const App: React.FC = () => {
     if (userData.isBanned && !isImmune) {
       // Don't sign out immediately, let the UI render the banned screen
     }
+    
     setUser(userData);
-    setEditForm(userData);
+    
+    // Check if new user (First time login / incomplete profile)
+    if (userData.age === 0 || !userData.name || userData.name === "کاربر جدید") {
+        setActiveTab(Tab.PROFILE);
+        setIsEditingProfile(true);
+    }
+    
     setLoading(false);
+  };
+
+  const checkDailyStatus = async (uid: string) => {
+      // Logic: If user hasn't logged today, add a local notification.
+      // If they HAVE logged, add a "Good job" local notification.
+      const logged = await hasLoggedToday(uid);
+      const todayStr = new Date().toLocaleDateString('fa-IR');
+      
+      const newNotif: AppNotification = {
+          id: `daily_${new Date().toISOString().split('T')[0]}`,
+          title: logged ? "وضعیت ثبت شده ✅" : "یادآوری روزانه 📝",
+          message: logged 
+            ? `آفرین! وضعیت امروزت رو ثبت کردی. ${GENERAL_WELLNESS_TIPS[Math.floor(Math.random() * GENERAL_WELLNESS_TIPS.length)]}`
+            : "هنوز وضعیت امروزت رو ثبت نکردی. همین الان اقدام کن تا نمودارهات دقیق‌تر باشن.",
+          type: logged ? 'success' : 'warning',
+          target: uid,
+          date: new Date().toISOString()
+      };
+
+      // We add this to state locally (it won't be in firebase, just for this session)
+      setNotifications(prev => {
+          // Prevent duplicate daily notifs
+          const exists = prev.find(n => n.id === newNotif.id);
+          if (exists) return prev;
+          return [newNotif, ...prev];
+      });
+      
+      if (!logged) setUnreadCount(prev => prev + 1);
+  };
+
+  const handlePerformUpdate = async () => {
+      if (window.confirm("برنامه بروزرسانی خواهد شد. آیا ادامه می‌دهید؟")) {
+          // 1. Clear Service Workers
+          if ('serviceWorker' in navigator) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              for (const registration of registrations) {
+                  await registration.unregister();
+              }
+          }
+          // 2. Clear Caches (Files)
+          if ('caches' in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(key => caches.delete(key)));
+          }
+          // 3. Clear LocalStorage keys related to versioning if exists (Safe)
+          // We generally keep user settings, but cache keys should go
+          
+          // 4. Force Reload
+          window.location.reload();
+      }
   };
 
   const handleOpenNotifications = () => {
@@ -164,8 +484,29 @@ const App: React.FC = () => {
   const handleAuthError = (error: any) => {
     console.error("Auth Error:", error.code);
     let message = "خطایی رخ داده است.";
-    // ... existing error handling ...
-    if (error.code === 'auth/invalid-credential') message = "اطلاعات ورود نادرست است.";
+    
+    switch (error.code) {
+        case 'auth/invalid-credential':
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+            message = "اطلاعات ورود (نام کاربری یا رمز عبور) اشتباه است.";
+            break;
+        case 'auth/email-already-in-use':
+            message = "این شماره یا ایمیل قبلاً ثبت شده است.";
+            break;
+        case 'auth/invalid-email':
+            message = "فرمت ایمیل یا شماره موبایل صحیح نیست.";
+            break;
+        case 'auth/weak-password':
+            message = "رمز عبور باید حداقل ۶ کاراکتر باشد.";
+            break;
+        case 'auth/too-many-requests':
+            message = "تعداد تلاش‌های ناموفق زیاد است. لطفا چند دقیقه دیگر تلاش کنید.";
+            break;
+        case 'auth/network-request-failed':
+            message = "خطای اتصال به اینترنت. لطفا اتصال خود را بررسی کنید.";
+            break;
+    }
     setAuthError(message);
   };
 
@@ -201,17 +542,15 @@ const App: React.FC = () => {
       }
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (newProfile: UserProfile) => {
     if (!userId) return;
-    setLoading(true);
-    const success = await saveUserProfile(userId, editForm);
+    const success = await saveUserProfile(userId, newProfile);
     if (success) {
-      setUser(editForm);
+      setUser(newProfile);
       setIsEditingProfile(false);
     } else {
       alert("خطا در ذخیره پروفایل");
     }
-    setLoading(false);
   };
 
   const handleLogout = () => {
@@ -221,12 +560,23 @@ const App: React.FC = () => {
        setIdentifier('');
        setPassword('');
        setAuthError(null);
+       setCurrentAudio(null);
+       setIsAudioPlaying(false);
     }
   };
 
   const navigateFromSidebar = (tab: Tab) => {
     setActiveTab(tab);
     setIsSidebarOpen(false);
+  };
+
+  const handlePlayAudio = (url: string, title: string, author: string) => {
+      setCurrentAudio({ url, title, author });
+      setIsAudioPlaying(true);
+  };
+
+  const handlePauseAudio = () => {
+      setIsAudioPlaying(false);
   };
 
   const isAdminOrDev = ['admin', 'super_admin', 'developer'].includes(user.role);
@@ -246,7 +596,6 @@ const App: React.FC = () => {
 
   // --- MAINTENANCE & BAN CHECKS ---
   
-  // 1. Check for Ban (Immunity applies)
   if (isAuthenticated && user.isBanned && !isImmune) {
       return (
           <div className="min-h-screen bg-red-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
@@ -270,7 +619,6 @@ const App: React.FC = () => {
       );
   }
 
-  // 2. Check for Maintenance (Immunity applies, Granular control applies)
   const isUserForcedMaintenance = user.maintenanceStatus === 'enabled';
   const isUserExemptMaintenance = user.maintenanceStatus === 'disabled';
   
@@ -314,7 +662,6 @@ const App: React.FC = () => {
         {/* Right Side - Image & Branding (Desktop Only) */}
         <div className="hidden lg:flex w-1/2 relative bg-primary items-center justify-center overflow-hidden">
             <div className="absolute inset-0 z-0">
-                 {/* High quality nature/calm image */}
                 <img 
                     src="https://images.unsplash.com/photo-1516549655169-df83a0774514?q=80&w=2070&auto=format&fit=crop" 
                     alt="Background" 
@@ -490,159 +837,24 @@ const App: React.FC = () => {
     );
   }
 
-  // Profile Page Component (Responsive)
-  const Profile = () => (
-    <div className="pb-24 px-4 py-6 w-full max-w-2xl mx-auto">
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-pink-100 text-center mb-6 relative">
-         <div className="absolute top-4 left-4 text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded border dir-ltr" dir="ltr">
-            ID: {userId?.substring(0,6)}...
-         </div>
-         
-         {!isEditingProfile ? (
-            <div className="flex flex-col items-center">
-              <div className="w-24 h-24 bg-pink-100 rounded-full mb-4 flex items-center justify-center text-primary text-4xl font-bold overflow-hidden border-4 border-white shadow-md">
-                 {user.name ? (
-                    <img 
-                      src={`https://ui-avatars.com/api/?name=${user.name}&background=fbcfe8&color=be185d&size=128`} 
-                      alt="Profile" 
-                      className="w-full h-full object-cover"
-                    />
-                 ) : (
-                    <span>?</span>
-                 )}
-              </div>
-              
-              <h2 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
-                  {user.name || "کاربر جدید"}
-                  {isAdminOrDev && <Shield size={18} className="text-blue-500" />}
-              </h2>
-              
-              <div className="flex flex-col items-center gap-1 mb-4">
-                  <span className="text-gray-500 text-sm">{user.age ? `${user.age} ساله` : "سن نامشخص"}</span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${user.role === 'developer' ? 'bg-purple-100 text-purple-700' : user.role === 'super_admin' ? 'bg-red-100 text-red-700' : user.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {user.role === 'user' ? 'کاربر عادی' : user.role === 'subscriber' ? 'اشتراک ویژه' : user.role === 'admin' ? 'ادمین' : user.role === 'developer' ? 'برنامه‌نویس' : 'مدیر کل'}
-                  </span>
-              </div>
-
-               {/* Dominant Symptoms Display */}
-               <div className="w-full border-t border-gray-100 pt-3 mb-4">
-                  <span className="text-xs font-bold text-gray-500 block mb-2">علائم غالب من</span>
-                  <div className="flex flex-wrap gap-2 justify-center">
-                      {user.dominantSymptoms?.length > 0 ? user.dominantSymptoms.map(s => (
-                          <span key={s} className="px-3 py-1 bg-pink-50 text-pink-700 text-xs rounded-full border border-pink-100">{s}</span>
-                      )) : <span className="text-gray-400 text-sm">موردی ثبت نشده</span>}
-                  </div>
-               </div>
-              
-              <div className="flex gap-2 mt-2 justify-center">
-                <button 
-                  onClick={() => setIsEditingProfile(true)}
-                  className="text-primary text-sm font-bold border border-primary px-6 py-2 rounded-full hover:bg-pink-50 transition-colors"
-                >
-                  ویرایش پروفایل
-                </button>
-                {isAdminOrDev && (
-                    <button 
-                        onClick={() => setActiveTab(Tab.ADMIN)}
-                        className="bg-primary text-white text-sm font-bold px-6 py-2 rounded-full hover:bg-pink-700 transition-colors flex items-center gap-1"
-                    >
-                        <Shield size={14} /> مدیریت
-                    </button>
-                )}
-              </div>
-            </div>
-         ) : (
-            <div className="space-y-4 text-right max-w-md mx-auto">
-               <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">نام نمایشی</label>
-                  <input 
-                    type="text" 
-                    value={editForm.name} 
-                    onChange={e => setEditForm({...editForm, name: e.target.value})}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
-                  />
-               </div>
-               <div className="flex gap-3">
-                   <div className="flex-1">
-                      <label className="block text-xs font-bold text-gray-700 mb-1">سن</label>
-                      <input 
-                        type="number" 
-                        value={editForm.age} 
-                        onChange={e => setEditForm({...editForm, age: Number(e.target.value)})}
-                        className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
-                      />
-                   </div>
-                   <div className="flex-1">
-                      <label className="block text-xs font-bold text-gray-700 mb-1">وزن (کیلوگرم)</label>
-                      <input 
-                        type="number" 
-                        value={editForm.weight} 
-                        onChange={e => setEditForm({...editForm, weight: Number(e.target.value)})}
-                        className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
-                      />
-                   </div>
-               </div>
-               <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">وضعیت پریود</label>
-                  <select 
-                     value={editForm.periodStatus}
-                     onChange={e => setEditForm({...editForm, periodStatus: e.target.value as any})}
-                     className="w-full border border-gray-300 rounded-lg p-3 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all shadow-sm"
-                  >
-                     <option value="منظم">منظم</option>
-                     <option value="نامنظم">نامنظم</option>
-                     <option value="قطع شده (یائسه)">قطع شده (یائسه)</option>
-                  </select>
-               </div>
-
-               {/* Dominant Symptoms Selection */}
-               <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-2">علائم غالب (انتخاب کنید)</label>
-                    <div className="flex flex-wrap gap-2">
-                        {COMMON_SYMPTOMS.map(s => (
-                            <button
-                                key={s}
-                                onClick={() => {
-                                    const current = editForm.dominantSymptoms || [];
-                                    if (current.includes(s)) {
-                                        setEditForm({...editForm, dominantSymptoms: current.filter(i => i !== s)});
-                                    } else {
-                                        setEditForm({...editForm, dominantSymptoms: [...current, s]});
-                                    }
-                                }}
-                                className={`px-3 py-1 rounded-full text-xs border transition-colors ${editForm.dominantSymptoms?.includes(s) ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-gray-600 border-gray-200'}`}
-                            >
-                                {s}
-                            </button>
-                        ))}
-                    </div>
-               </div>
-               
-               <div className="flex gap-2 pt-2">
-                 <button 
-                   onClick={handleSaveProfile}
-                   disabled={loading}
-                   className="flex-1 bg-primary text-white py-3 rounded-xl font-bold text-sm flex justify-center items-center gap-2 shadow-lg shadow-pink-200 hover:bg-pink-700 transition-colors active:scale-95"
-                 >
-                   {loading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-                   ذخیره تغییرات
-                 </button>
-                 <button 
-                   onClick={() => setIsEditingProfile(false)}
-                   className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors border border-gray-300"
-                 >
-                   انصراف
-                 </button>
-               </div>
-            </div>
-         )}
-      </div>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-pink-50 font-sans text-gray-800 w-full mx-auto shadow-2xl overflow-hidden relative">
       
+      {/* Update Banner */}
+      {availableUpdate && (
+          <UpdateBanner version={availableUpdate} onUpdate={handlePerformUpdate} />
+      )}
+
+      {/* Global Audio Player */}
+      {currentAudio && (
+        <GlobalAudioPlayer 
+            currentAudio={currentAudio} 
+            onClose={() => { setCurrentAudio(null); setIsAudioPlaying(false); }} 
+            isPlaying={isAudioPlaying}
+            onTogglePlay={() => setIsAudioPlaying(!isAudioPlaying)}
+        />
+      )}
+
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -662,9 +874,10 @@ const App: React.FC = () => {
             <X size={24} />
           </button>
           <div className="flex items-center gap-3 mt-4">
-            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/50 overflow-hidden">
+            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/50 overflow-hidden text-2xl font-bold">
+               {/* Sidebar Avatar - First Letter */}
                {user.name ? (
-                  <img src={`https://ui-avatars.com/api/?name=${user.name}&background=random`} alt="User" className="w-full h-full object-cover"/>
+                  <span>{user.name.charAt(0)}</span>
                ) : (
                   <UserIcon size={28} className="text-white" />
                )}
@@ -740,8 +953,8 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Header */}
-      <header className="bg-white p-4 sticky top-0 z-30 shadow-sm flex justify-between items-center w-full max-w-7xl mx-auto rounded-b-2xl md:rounded-b-none">
+      {/* Header (FIXED) */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md shadow-sm flex justify-between items-center w-full px-4 py-3 h-[72px]">
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setIsSidebarOpen(true)}
@@ -749,7 +962,12 @@ const App: React.FC = () => {
           >
             <Menu size={20} />
           </button>
-          <h1 className="font-bold text-lg text-primary">همدم یائسگی</h1>
+          <h1 
+            onClick={() => setActiveTab(Tab.DASHBOARD)}
+            className="font-bold text-lg text-primary cursor-pointer select-none hover:opacity-80 transition-opacity"
+          >
+            همدم یائسگی
+          </h1>
         </div>
         
         <div className="flex items-center gap-3">
@@ -778,7 +996,16 @@ const App: React.FC = () => {
                                 </div>
                             ) : (
                                 notifications.map(n => (
-                                    <div key={n.id} className={`p-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors relative ${n.type === 'alert' ? 'bg-red-50' : ''}`}>
+                                    <div 
+                                        key={n.id} 
+                                        className={`p-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors relative ${n.type === 'alert' ? 'bg-red-50' : n.type === 'warning' ? 'bg-yellow-50' : n.type === 'success' ? 'bg-green-50' : ''}`}
+                                        onClick={() => {
+                                            if(n.title.includes("یادآوری")) {
+                                                setShowNotifications(false);
+                                                setActiveTab(Tab.TRACKER);
+                                            }
+                                        }}
+                                    >
                                         <div className="flex items-start gap-2">
                                             <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${n.type === 'alert' ? 'bg-red-500' : n.type === 'warning' ? 'bg-yellow-500' : n.type === 'success' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
                                             <div>
@@ -803,11 +1030,9 @@ const App: React.FC = () => {
             className="cursor-pointer"
             >
             {user.name ? (
-                <img 
-                src={`https://ui-avatars.com/api/?name=${user.name}&background=fbcfe8&color=be185d`} 
-                alt="Profile" 
-                className="w-10 h-10 rounded-full border-2 border-white shadow-sm"
-                />
+                <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm bg-pink-200 text-primary flex items-center justify-center font-bold">
+                    {user.name.charAt(0)}
+                </div>
             ) : (
                 <div className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center">
                     <UserIcon size={20} className="text-gray-400"/>
@@ -817,13 +1042,23 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="min-h-[calc(100vh-140px)] w-full max-w-7xl mx-auto">
+      {/* Main Content Area - Added top padding for fixed header */}
+      <main className="min-h-[calc(100vh-140px)] w-full max-w-7xl mx-auto pt-20">
         {activeTab === Tab.DASHBOARD && <Dashboard changeTab={setActiveTab} userId={userId!} user={user} />}
         {activeTab === Tab.TRACKER && <SymptomTracker userId={userId!} />}
-        {activeTab === Tab.COMMUNITY && <Community currentUserRole={user.role} />}
-        {activeTab === Tab.LIBRARY && <Library />}
-        {activeTab === Tab.PROFILE && <Profile />}
+        {activeTab === Tab.COMMUNITY && <Community currentUserRole={user.role} currentUserId={userId!} />}
+        {activeTab === Tab.LIBRARY && <Library onPlayAudio={handlePlayAudio} onPauseAudio={handlePauseAudio} currentAudioUrl={currentAudio?.url || null} isPlaying={isAudioPlaying} />}
+        {activeTab === Tab.PROFILE && (
+            <Profile 
+                user={user} 
+                userId={userId} 
+                isAdminOrDev={isAdminOrDev} 
+                isEditingProfile={isEditingProfile} 
+                setIsEditingProfile={setIsEditingProfile}
+                onSave={handleSaveProfile}
+                setActiveTab={setActiveTab}
+            />
+        )}
         {activeTab === Tab.ADMIN && isAdminOrDev && <AdminPanel currentUserRole={user.role} />}
       </main>
 

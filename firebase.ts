@@ -1,3 +1,4 @@
+
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { 
@@ -21,7 +22,13 @@ import {
   query, 
   orderBy, 
   deleteDoc, 
-  onSnapshot 
+  onSnapshot,
+  arrayUnion,
+  arrayRemove,
+  where,
+  initializeFirestore,
+  persistentLocalCache,
+  CACHE_SIZE_UNLIMITED
 } from "firebase/firestore";
 
 // کانفیگ اختصاصی پروژه شما
@@ -39,24 +46,33 @@ const firebaseConfig = {
 // راه‌اندازی فایربیس
 const app = initializeApp(firebaseConfig);
 
-// راه‌اندازی آنالیتیکس (با مدیریت خطا برای محیط‌های خاص)
+// راه‌اندازی دیتابیس به صورت مستقیم (بدون پروکسی)
+// استفاده از کش آفلاین برای تجربه کاربری بهتر هنگام قطعی اینترنت
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: undefined, 
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+  })
+});
+
+// راه‌اندازی آنالیتیکس
 let analytics;
 try {
   analytics = getAnalytics(app);
 } catch (e) {
-  console.log("Firebase Analytics failed to load:", e);
+  console.log("Analytics disabled:", e);
 }
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 
-// خروجی گرفتن از توابع مورد نیاز برای استفاده در سایر فایل‌ها
 export { 
+  db,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInAnonymously,
   signOut, 
   onAuthStateChanged,
   updateProfile,
-  doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, query, orderBy, deleteDoc, onSnapshot
+  doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, query, orderBy, deleteDoc, onSnapshot,
+  arrayUnion, arrayRemove, where
 };

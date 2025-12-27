@@ -1,3 +1,4 @@
+
 export type UserRole = 'user' | 'subscriber' | 'admin' | 'super_admin' | 'developer';
 
 export interface UserProfile {
@@ -20,15 +21,36 @@ export interface SymptomRecord {
   note: string;
 }
 
+export interface Reply {
+  id: string;
+  authorAlias: string;
+  authorId: string;
+  content: string;
+  timestamp: string;
+}
+
 export interface ForumPost {
   id: number;
   topic: string;
   content: string;
   likes: number;
+  likedBy: string[]; // Array of UserIDs
   timestamp: string;
   authorAlias: string; // Anonymous
-  authorId?: string; // For admin moderation
+  authorId?: string; // For admin moderation/ownership
   replies: number;
+  repliesList?: Reply[];
+}
+
+export interface Report {
+  id: string;
+  postId: number;
+  reporterId: string;
+  reportedUserId?: string; // ID of the post author
+  reason: string;
+  timestamp: string;
+  postContentSnippet: string;
+  status: 'pending' | 'resolved' | 'dismissed';
 }
 
 export interface DailyTip {
@@ -40,7 +62,6 @@ export interface DailyTip {
 export interface LibraryItem {
   id: number;
   title: string;
-  duration: string;
   author: string;
   type: 'podcast' | 'article';
   url: string; // Real URL for audio file or article link
